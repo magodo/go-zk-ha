@@ -3,26 +3,26 @@ package zkha
 import "log"
 
 type Logger interface {
-	DEBUGF(format string, v ...interface{})
-	DEBUG(v ...interface{})
-	INFOF(format string, v ...interface{})
-	INFO(v ...interface{})
-	WARNF(format string, v ...interface{})
-	WARN(v ...interface{})
-	ERRORF(format string, v ...interface{})
-	ERROR(v ...interface{})
+	Debugf(format string, v ...interface{})
+	Debug(v ...interface{})
+	Infof(format string, v ...interface{})
+	Info(v ...interface{})
+	Warnf(format string, v ...interface{})
+	Warn(v ...interface{})
+	Errorf(format string, v ...interface{})
+	Error(v ...interface{})
 }
 
 type defaultLogger struct{}
 
-func (l *defaultLogger) DEBUGF(format string, v ...interface{}) { log.Printf(format, v...) }
-func (l *defaultLogger) DEBUG(v ...interface{})                 { log.Print(v...) }
-func (l *defaultLogger) INFOF(format string, v ...interface{})  { log.Printf(format, v...) }
-func (l *defaultLogger) INFO(v ...interface{})                  { log.Print(v...) }
-func (l *defaultLogger) WARNF(format string, v ...interface{})  { log.Printf(format, v...) }
-func (l *defaultLogger) WARN(v ...interface{})                  { log.Print(v...) }
-func (l *defaultLogger) ERRORF(format string, v ...interface{}) { log.Printf(format, v...) }
-func (l *defaultLogger) ERROR(v ...interface{})                 { log.Print(v...) }
+func (l *defaultLogger) Debugf(format string, v ...interface{}) { log.Printf(format, v...) }
+func (l *defaultLogger) Debug(v ...interface{})                 { log.Print(v...) }
+func (l *defaultLogger) Infof(format string, v ...interface{})  { log.Printf(format, v...) }
+func (l *defaultLogger) Info(v ...interface{})                  { log.Print(v...) }
+func (l *defaultLogger) Warnf(format string, v ...interface{})  { log.Printf(format, v...) }
+func (l *defaultLogger) Warn(v ...interface{})                  { log.Print(v...) }
+func (l *defaultLogger) Errorf(format string, v ...interface{}) { log.Printf(format, v...) }
+func (l *defaultLogger) Error(v ...interface{})                 { log.Print(v...) }
 
 func init() {
 	logger = &defaultLogger{}

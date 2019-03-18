@@ -163,7 +163,7 @@ func (sm *StateMachine) transit() {
 }
 
 func (sm *StateMachine) logStateTransition(target State) {
-	sm.logger.INFOF("Transit from %s to %s", sm.Current(), target.String())
+	sm.logger.Infof("Transit from %s to %s", sm.Current(), target.String())
 }
 
 func (sm *StateMachine) InitStateToRaceState() error {
@@ -300,7 +300,7 @@ func (s *raceState) Transit(sm *StateMachine) {
 			return
 		}()
 		if err != nil {
-			logger.WARNF("%s. Retry later...", err)
+			logger.Warnf("%s. Retry later...", err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -336,7 +336,7 @@ func (s *masterClosingState) Transit(sm *StateMachine) {
 		sm.Event(EVT_MASTER_TASK_STOP)
 		return
 	case <-time.After(sm.sessionTimeout):
-		logger.WARN("Task not stopped before session expiration, quit process...")
+		logger.Warn("Task not stopped before session expiration, quit process...")
 		sm.Event(EVT_EXIT)
 		return
 	}
