@@ -1,0 +1,46 @@
+@startuml
+hide empty description
+skinparam defaultTextAlignment left
+
+skinparam state {
+  StartColor Black
+  EndColor Red
+  BackgroundColor LightBlue
+  BorderColor Gray
+  FontName Impact
+}
+
+[*] --> InitState: connect to zk cluster  (acquire default watcher)
+InitState: watch "default watcher"
+
+InitState -down-> RaceState: [StateHasSession]
+RaceState: try to create ephemeral znode
+note right of RaceState
+check existance and watch first
+end note
+
+RaceState -down-> MasterState: [ok]\n - launch business logic
+RaceState -down-> WatchState: [nok]\n- pass the "watcher" to next state
+
+WatchState: - watch "default watcher"\n- watch "existence watcher"
+WatchState -up-> RaceState: [EventNodeDelete]
+WatchState -down-> WatchClosedState: [StateDisconnected]
+WatchClosedState: watch "default watcher"
+WatchClosedState -up-> WatchState: [StateHasSession]
+WatchClosedState -up-> InitState: [StateExpired]
+
+MasterState: watch "default watcher"
+MasterState -down-> MasterClosingState: [StateDisconnected]
+MasterClosingState: (conservatively) stop business tasks\nthen watch default 
+MasterClosingState -down-> MasterClosedState: [stop within timeout]
+MasterClosingState -down-> ExitState: [stop exceeds timeout]
+MasterClosedState: watch "default watcher"
+MasterClosedState -up-> MasterState: [StateHasSession]\n - launch business tasks
+MasterClosedState -up-> InitState: [StateExpired]
+
+InitState -down-> ExitState: [SIGTERM/SIGQUIT]
+RaceState -down-> ExitState: [SIGTERM/SIGQUIT]
+MasterClosedState -down-> ExitState: [SIGTERM/SIGQUIT]
+WatchClosedState -down-> ExitState: [SIGTERM/SIGQUIT]
+
+@enduml
