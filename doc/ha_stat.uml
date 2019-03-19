@@ -14,10 +14,7 @@ skinparam state {
 InitState: watch "default watcher"
 
 InitState -down-> RaceState: [StateHasSession]
-RaceState: try to create ephemeral znode
-note right of RaceState
-check existance and watch first
-end note
+RaceState: try to create ephemeral znode,\notherwise create existance watcher
 
 RaceState -down-> MasterState: [ok]\n - launch business logic
 RaceState -down-> WatchState: [nok]\n- pass the "watcher" to next state

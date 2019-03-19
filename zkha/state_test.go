@@ -17,7 +17,7 @@ func TestFoo(t *testing.T) {
 
 	zkha.RegisterStopFunc(func() error {
 		log.Println("start to stop work...")
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second)
 		log.Println("finish to stop work...")
 		return nil
 	})
