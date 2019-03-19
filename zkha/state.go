@@ -55,12 +55,12 @@ func initSm(servers []string, timeout time.Duration, znode string) (sm *StateMac
 	ZKConn = c
 
 	// register exit signal
-	exitCh := make(chan struct{})
+	exitCh := make(chan struct{}, 2) // tricky here, to ensure transitions as: master -> master_closing -> master_closed -> exit, triggered by exit event
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGTERM, syscall.SIGQUIT)
 	go func() {
 		<-ch
-		c.Close()
+		exitCh <- struct{}{}
 		exitCh <- struct{}{}
 	}()
 
@@ -78,7 +78,7 @@ func initSm(servers []string, timeout time.Duration, znode string) (sm *StateMac
 			{Name: EVT_WATCHER_DISCONNECT, Src: []string{watch_state.String()}, Dst: watch_closed_state.String()},
 			{Name: EVT_WATCHER_CONNECT, Src: []string{watch_closed_state.String()}, Dst: watch_state.String()},
 			{Name: EVT_WATCHER_EXPIRE, Src: []string{watch_closed_state.String()}, Dst: init_state.String()},
-			{Name: EVT_EXIT, Src: []string{init_state.String(), race_state.String(), watch_closed_state.String(), master_closing_state.String(), master_closed_state.String()}, Dst: exit_state.String()},
+			{Name: EVT_EXIT, Src: []string{init_state.String(), race_state.String(), watch_closed_state.String(), master_closing_state.String(), master_closed_state.String(), watch_state.String()}, Dst: exit_state.String()},
 		},
 		fsm.Callbacks{
 			"before_event": func(e *fsm.Event) {
@@ -313,8 +313,13 @@ type masterState struct{}
 func (s *masterState) String() string { return "master_state" }
 func (s *masterState) Transit(sm *StateMachine) {
 	for {
-		evt := <-sm.defaultCh
-		if evt.State == zk.StateDisconnected {
+		select {
+		case evt := <-sm.defaultCh:
+			if evt.State == zk.StateDisconnected {
+				sm.Event(EVT_MASTER_DISCONNECT)
+				return
+			}
+		case <-sm.exitCh:
 			sm.Event(EVT_MASTER_DISCONNECT)
 			return
 		}
@@ -383,6 +388,9 @@ func (s *watchState) Transit(sm *StateMachine) {
 				sm.Event(EVT_ZNODE_DELETE)
 				return
 			}
+		case <-sm.exitCh:
+			sm.Event(EVT_EXIT)
+			return
 		}
 	}
 }
@@ -413,6 +421,7 @@ type exitState struct{}
 
 func (s *exitState) String() string { return "exit_state" }
 func (s *exitState) Transit(sm *StateMachine) {
+	sm.c.Close()
 	// just quit
 	os.Exit(0)
 }

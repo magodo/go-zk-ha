@@ -30,17 +30,27 @@ WatchClosedState -up-> WatchState: [StateHasSession]
 WatchClosedState -up-> InitState: [StateExpired]
 
 MasterState: watch "default watcher"
-MasterState -down-> MasterClosingState: [StateDisconnected]
+MasterState -down[#blue]-> MasterClosingState: [StateDisconnected]\nor\n[exit]
 MasterClosingState: (conservatively) stop business tasks\nthen watch default 
 MasterClosingState -down-> MasterClosedState: [stop within timeout]
-MasterClosingState -down-> ExitState: [stop exceeds timeout]
+MasterClosingState -down[dashed]-> ExitState: [stop exceeds timeout]
 MasterClosedState: watch "default watcher"
 MasterClosedState -up-> MasterState: [StateHasSession]\n - launch business tasks
 MasterClosedState -up-> InitState: [StateExpired]
 
-InitState -down-> ExitState: [SIGTERM/SIGQUIT]
-RaceState -down-> ExitState: [SIGTERM/SIGQUIT]
-MasterClosedState -down-> ExitState: [SIGTERM/SIGQUIT]
-WatchClosedState -down-> ExitState: [SIGTERM/SIGQUIT]
+InitState -down[dashed]-> ExitState: [exit]
+RaceState -down[dashed]-> ExitState: [exit]
+MasterClosedState -down[dashed]-> ExitState: [exit]
+WatchState -down[dashed]-> ExitState: [exit]
+WatchClosedState -down[dashed]-> ExitState: [exit]
+
+ExitState: - close zk connection\n- exit process
+
+legend
+| term | comment |
+| trigger: [exit] | represents signal SIGTERM/SIGQUIT|
+| trigger: [EventXXX]   | represents the "type" property of Event accepted by watcher    |
+| trigger: [StateXXX]   | represents the "state" property of Event accepted by watcher    |
+endlegend
 
 @enduml
