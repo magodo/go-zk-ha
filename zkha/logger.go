@@ -2,7 +2,7 @@ package zkha
 
 import "log"
 
-type Logger interface {
+type ILogger interface {
 	Debugf(format string, v ...interface{})
 	Debug(v ...interface{})
 	Infof(format string, v ...interface{})
@@ -23,7 +23,3 @@ func (l *defaultLogger) Warnf(format string, v ...interface{})  { log.Printf(for
 func (l *defaultLogger) Warn(v ...interface{})                  { log.Print(v...) }
 func (l *defaultLogger) Errorf(format string, v ...interface{}) { log.Printf(format, v...) }
 func (l *defaultLogger) Error(v ...interface{})                 { log.Print(v...) }
-
-func init() {
-	logger = &defaultLogger{}
-}
