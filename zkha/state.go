@@ -35,24 +35,21 @@ type State interface {
 type StateMachine struct {
 	State
 	*fsm.FSM
-	logger         Logger
-	exitCh         <-chan struct{}
-	sessionTimeout time.Duration
+	*Service
+	exitCh <-chan struct{}
 
 	c         *zk.Conn
 	defaultCh <-chan zk.Event
 	existCh   <-chan zk.Event
-	znode     string
 }
 
-func initSm(servers []string, timeout time.Duration, znode string) (sm *StateMachine, err error) {
+func initSm(service *Service) (sm *StateMachine, err error) {
 
 	// connect to zk cluster
-	c, defaultCh, err := zk.Connect(servers, timeout)
+	c, defaultCh, err := zk.Connect(service.opts.ZkServers, service.opts.NodeExpiry)
 	if err != nil {
 		return
 	}
-	ZKConn = c
 
 	// register exit signal
 	exitCh := make(chan struct{}, 2) // tricky here, to ensure transitions as: master -> master_closing -> master_closed -> exit, triggered by exit event
@@ -146,15 +143,12 @@ func initSm(servers []string, timeout time.Duration, znode string) (sm *StateMac
 	)
 
 	return &StateMachine{
-		State:  init_state,
-		FSM:    fsM,
-		logger: logger,
-		exitCh: exitCh,
-		// FIXME: the `timeout` is not the real one. see this [issue](https://github.com/samuel/go-zookeeper/issues/210)
-		sessionTimeout: timeout,
-		c:              c,
-		defaultCh:      defaultCh,
-		znode:          znode,
+		State:     init_state,
+		FSM:       fsM,
+		Service:   service,
+		exitCh:    exitCh,
+		c:         c,
+		defaultCh: defaultCh,
 	}, nil
 }
 
@@ -163,7 +157,7 @@ func (sm *StateMachine) transit() {
 }
 
 func (sm *StateMachine) logStateTransition(target State) {
-	sm.logger.Infof("Transit from %s to %s", sm.Current(), target.String())
+	sm.opts.Logger.Infof("Transit from %s to %s", sm.Current(), target.String())
 }
 
 func (sm *StateMachine) InitStateToRaceState() error {
@@ -172,7 +166,10 @@ func (sm *StateMachine) InitStateToRaceState() error {
 }
 func (sm *StateMachine) RaceStateToMasterState() error {
 	sm.logStateTransition(master_state)
-	return startCb()
+	if sm.opts.StartFunc != nil {
+		return sm.opts.StartFunc()
+	}
+	return nil
 }
 
 func (sm *StateMachine) RaceStateToWatchState() error {
@@ -194,7 +191,10 @@ func (sm *StateMachine) MasterClosingStateToMasterClosedState() error {
 }
 func (sm *StateMachine) MasterClosedStateToMasterState() error {
 	sm.logStateTransition(master_state)
-	return startCb()
+	if sm.opts.StartFunc != nil {
+		return sm.opts.StartFunc()
+	}
+	return nil
 }
 func (sm *StateMachine) MasterClosedStateToInitState() error {
 	sm.logStateTransition(init_state)
@@ -252,6 +252,7 @@ type raceState struct{}
 
 func (s *raceState) String() string { return "race_state" }
 func (s *raceState) Transit(sm *StateMachine) {
+	znode := sm.opts.LockZNode
 	for {
 		err := func() (err error) {
 			eflag := int32(zk.FlagEphemeral)
@@ -266,7 +267,7 @@ func (s *raceState) Transit(sm *StateMachine) {
 			}
 
 			// check existance first
-			isExists, _, ch, err := sm.c.ExistsW(sm.znode)
+			isExists, _, ch, err := sm.c.ExistsW(znode)
 			if err != nil {
 			}
 			if isExists {
@@ -277,7 +278,7 @@ func (s *raceState) Transit(sm *StateMachine) {
 			}
 
 			// try to create eznode
-			paths := strings.Split(sm.znode, "/")
+			paths := strings.Split(znode, "/")
 			var parentPath string
 			for _, v := range paths[1 : len(paths)-1] {
 				parentPath += "/" + v
@@ -292,7 +293,11 @@ func (s *raceState) Transit(sm *StateMachine) {
 					}
 				}
 			}
-			_, err = sm.c.Create(sm.znode, nil, eflag, acl)
+			var data []byte
+			if sm.opts.GenNodeDataFunc != nil {
+				data = sm.opts.GenNodeDataFunc()
+			}
+			_, err = sm.c.Create(znode, data, eflag, acl)
 			if err != nil {
 				return
 			}
@@ -300,7 +305,7 @@ func (s *raceState) Transit(sm *StateMachine) {
 			return
 		}()
 		if err != nil {
-			logger.Warnf("%s. Retry later...", err)
+			sm.opts.Logger.Warnf("%s. Retry later...", err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -332,16 +337,20 @@ func (s *masterClosingState) String() string { return "master_closing_state" }
 func (s *masterClosingState) Transit(sm *StateMachine) {
 	c := make(chan struct{})
 	go func() {
-		if err := stopCb(); err == nil {
-			c <- struct{}{}
+		if sm.opts.StopFunc != nil {
+			if err := sm.opts.StopFunc(); err != nil {
+				sm.opts.Logger.Errorf("failed to run stop function: %v", err)
+			}
 		}
+		c <- struct{}{}
 	}()
 	select {
 	case <-c:
 		sm.Event(EVT_MASTER_TASK_STOP)
 		return
-	case <-time.After(sm.sessionTimeout):
-		logger.Warn("Task not stopped before session expiration, quit process...")
+	// FIXME: `NodeExpiry` doesn't reveal the real timeout. [issue](https://github.com/samuel/go-zookeeper/issues/210)
+	case <-time.After(sm.opts.NodeExpiry):
+		sm.opts.Logger.Warn("Task not stopped before session expiration, quit process...")
 		sm.Event(EVT_EXIT)
 		return
 	}
